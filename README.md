@@ -3,7 +3,7 @@
 Facility work-order suite for **Arch Vista Behavioral Health**
 5500 South Broadway Street · St. Louis, MO 63111
 
-**Live:** https://archvista-facilities.github.io/workorders/
+**Live:** https://archvista-facilities.github.io/WorkOrders/
 
 Request → dispatch → work → complete → close, built for a behavioral-health environment: ligature-risk escalation, tool-control attestation on patient units, out-of-service tracking, role-based access, error logging, an audit trail, and reporting.
 
@@ -53,7 +53,7 @@ Ideas for next modules: preventive-maintenance schedules, environment-of-care / 
 
 Set these under **Authentication** in the Supabase dashboard for project `ifthmeicriftzfbjmurk`:
 
-1. **URL Configuration:** set Site URL to `https://archvista-facilities.github.io/workorders/` and add the same URL to Redirect URLs.
+1. **URL Configuration:** set Site URL to `https://archvista-facilities.github.io/WorkOrders/` and add the same URL to Redirect URLs.
 2. **Providers → Email:** keep *Confirm email* **on**.
 3. **Password requirements:** minimum length 12, with lowercase, uppercase, digits and symbols required.
 4. **SMTP:** the built-in sender is limited to a few emails per hour. Before rolling out to staff, configure a real SMTP sender such as Microsoft 365 or Resend.
