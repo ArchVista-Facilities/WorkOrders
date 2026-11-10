@@ -1,0 +1,48 @@
+# Publishes ./site to GitHub Pages on every push to main.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail the deploy if any JavaScript file has a syntax error.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax check
+        run: for f in site/js/*.js site/js/pages/*.js; do node --check "$f"; done
+
+      # Guard against ever shipping a secret key in the static site.
+      - name: Secret scan
+        run: |
+          if grep -rEn --exclude-dir=vendor "service_role|sb_secret_|eyJ[A-Za-z0-9_-]{20,}\.eyJ" site/; then
+            echo "::error::A Supabase secret/service key was found in site/. Only the publishable key may be shipped."
+            exit 1
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
