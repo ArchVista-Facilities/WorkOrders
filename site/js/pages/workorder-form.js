@@ -12,8 +12,10 @@ import { html, mount, icon, $, raw, toast, toastError, formValues, busy, options
 
 export default {
   title: (p) => (p.id ? 'Edit Work Order' : 'New Request'),
-  async render({ el, params, app }) {
+  async render({ el, params, query, app }) {
     const editing = Boolean(params.id);
+    // Prefill from a link (e.g. a failed rounds item → "Create work order").
+    const pre = editing ? {} : query || {};
     const [lookups, meta, assignable, existing] = await Promise.all([
       api('/settings/lookups'),
       api('/workorders/meta'),
@@ -33,7 +35,7 @@ export default {
     lookups.locations.forEach((l) => (byBuilding[l.building] = byBuilding[l.building] || []).push(l));
     const locSelect = html`<option value="">Select a location…</option>${Object.entries(byBuilding).map(
       ([b, list]) => html`<optgroup label="${b}">${list.map(
-        (l) => html`<option value="${l.id}" data-patient="${l.is_patient_area}" ${w && w.location && w.location.id === l.id ? raw('selected') : ''}>${l.unit && l.unit !== l.name ? `${l.unit} — ` : ''}${l.name}${l.is_patient_area ? ' (patient area)' : ''}</option>`
+        (l) => html`<option value="${l.id}" data-patient="${l.is_patient_area}" ${(w && w.location && w.location.id === l.id) || (!w && String(l.id) === String(pre.locationId)) ? raw('selected') : ''}>${l.unit && l.unit !== l.name ? `${l.unit} — ` : ''}${l.name}${l.is_patient_area ? ' (patient area)' : ''}</option>`
       )}</optgroup>`
     )}`;
 
@@ -55,15 +57,15 @@ export default {
         <div class="form-section">
           <h3>${icon('clipboard')}What needs attention?</h3>
           <div class="field"><label class="req" for="f-title">Short title</label>
-            <input id="f-title" name="title" type="text" maxlength="150" required placeholder="e.g. Toilet running in room 214" value="${w ? w.title : ''}" /></div>
+            <input id="f-title" name="title" type="text" maxlength="150" required placeholder="e.g. Toilet running in room 214" value="${w ? w.title : pre.title || ''}" /></div>
           <div class="field"><label class="req" for="f-desc">Description</label>
-            <textarea id="f-desc" name="description" maxlength="5000" required placeholder="What is wrong, when it started, and anything maintenance should know before arriving.">${w ? w.description : ''}</textarea>
+            <textarea id="f-desc" name="description" maxlength="5000" required placeholder="What is wrong, when it started, and anything maintenance should know before arriving.">${w ? w.description : pre.description || ''}</textarea>
             <div class="help">${icon('lock', 'icon-sm')} Do not include patient names, MRNs, or clinical details. Refer to rooms and units only.</div></div>
           <div class="form-grid">
             <div class="field"><label class="req" for="f-cat">Category</label>
-              <select id="f-cat" name="categoryId" required>${options(lookups.categories, w && w.category ? w.category.id : '', { valueKey: 'id', labelKey: 'name', blank: 'Select a category…' })}</select></div>
+              <select id="f-cat" name="categoryId" required>${options(lookups.categories, w && w.category ? w.category.id : pre.categoryId || '', { valueKey: 'id', labelKey: 'name', blank: 'Select a category…' })}</select></div>
             <div class="field"><label for="f-type">Type</label>
-              <select id="f-type" name="type">${options(meta.types, w ? w.type : 'corrective', { valueKey: 'key', labelKey: 'label' })}</select></div>
+              <select id="f-type" name="type">${options(meta.types, w ? w.type : pre.type || 'corrective', { valueKey: 'key', labelKey: 'label' })}</select></div>
           </div>
         </div>
 
@@ -72,7 +74,7 @@ export default {
           <div class="form-grid">
             <div class="field"><label class="req" for="f-loc">Location</label><select id="f-loc" name="locationId" required>${locSelect}</select></div>
             <div class="field"><label for="f-room">Room / specific spot</label>
-              <input id="f-room" name="locationDetail" type="text" maxlength="150" placeholder="e.g. Room 214, bathroom" value="${w ? w.locationDetail || '' : ''}" /></div>
+              <input id="f-room" name="locationDetail" type="text" maxlength="150" placeholder="e.g. Room 214, bathroom" value="${w ? w.locationDetail || '' : pre.locationDetail || ''}" /></div>
             <div class="field"><label for="f-asset">Asset / equipment tag</label>
               <input id="f-asset" name="assetTag" type="text" maxlength="60" placeholder="Optional" value="${w ? w.assetTag || '' : ''}" /></div>
             <div class="field"><label for="f-phone">Best contact number</label>

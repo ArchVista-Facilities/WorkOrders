@@ -146,6 +146,8 @@ const NAV = [
   { path: '/dashboard', label: 'Dashboard', icon: 'home', order: 0 },
   { path: '/workorders/new', label: 'New Request', icon: 'plus', permission: 'workorders.create', order: 5 },
   { path: '/workorders', label: 'Work Orders', icon: 'clipboard', order: 10 },
+  { path: '/rounds', label: 'Rounds & Inspections', icon: 'checklist', permission: 'rounds.manage', order: 12 },
+  { path: '/compliance', label: 'Compliance Tracker', icon: 'calendar', permission: 'compliance.manage', order: 14 },
   { path: '/reports', label: 'Reports', icon: 'chart', permission: 'reports.view', order: 20 },
   { path: '/profile', label: 'My Profile', icon: 'user', order: 80 },
   { path: '/users', label: 'Users', icon: 'users', permission: ['users.view', 'users.manage'], section: 'admin', order: 70 },
@@ -824,6 +826,182 @@ route('GET', '/reports/summary.csv', async ({ query }) => {
     { label: 'Open', key: 'open' }, { label: 'Completed', key: 'completed' },
     { label: 'Avg Hours to Complete', key: 'avg_hours' }, { label: 'Labor Hours', key: 'labor_hours' },
   ], rows));
+});
+
+/* ---------- Rounds & inspection forms (owner-only; RLS enforces) ---------- */
+
+/**
+ * Phone photos are often 4–12 MB. Re-encode large images to a ≤1600px JPEG
+ * before upload so rounds stay fast on cellular. Small images pass through.
+ */
+async function shrinkImage(file) {
+  if (!file || !/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 1.5 * 1024 * 1024) return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.82));
+    return blob ? new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
+  } catch {
+    return file;
+  }
+}
+
+const shapeRound = (s) => ({
+  id: s.id,
+  templateId: s.template_id,
+  name: s.template_name,
+  status: s.status,
+  date: s.round_date,
+  header: s.header || {},
+  answers: s.answers || {},
+  definition: s.definition,
+  findings: s.findings,
+  location: s.location ? { id: s.location_id, name: s.location.name, unit: s.location.unit } : null,
+  photoCount: s.form_photos && s.form_photos[0] ? s.form_photos[0].count : undefined,
+  createdAt: s.created_at,
+  updatedAt: s.updated_at,
+  submittedAt: s.submitted_at,
+});
+
+route('GET', '/rounds/templates', async () =>
+  ok(await sb.from('form_templates').select('id, name, description').eq('is_active', true).order('sort_order').order('name')));
+
+route('GET', '/rounds', async ({ query }) => {
+  let q = sb.from('form_submissions')
+    .select('id, template_id, template_name, status, round_date, header, findings, location_id, created_at, updated_at, submitted_at, location:locations(name, unit), form_photos(count)');
+  if (query.status) q = q.eq('status', query.status);
+  if (query.templateId) q = q.eq('template_id', query.templateId);
+  const rows = ok(await q.order('round_date', { ascending: false, nullsFirst: false }).order('id', { ascending: false }).limit(300));
+  return rows.map(shapeRound);
+});
+
+route('POST', '/rounds', async ({ body }) => {
+  const t = ok(await sb.from('form_templates').select('*').eq('id', body.templateId).single());
+  const meRow = (await loadMe()).profile;
+  const local = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString();
+  const header = { date: local.slice(0, 10), time: local.slice(11, 16) };
+  (t.definition.header || []).forEach((h) => {
+    if (h.default === 'me') header[h.key] = fullName(meRow.first_name, meRow.last_name, meRow.preferred_name);
+  });
+  const row = ok(await sb.from('form_submissions').insert({
+    template_id: t.id, template_name: t.name, definition: t.definition, header, round_date: header.date,
+  }).select('id').single());
+  return { id: row.id };
+});
+
+route('GET', '/rounds/:id', async ({ params }) => {
+  const s = ok(await sb.from('form_submissions').select('*, location:locations(name, unit)').eq('id', params.id).maybeSingle());
+  if (!s) throw new ApiError('Round not found.', 404);
+  const photos = ok(await sb.from('form_photos').select('id, item_key, storage_path, original_name, created_at').eq('submission_id', s.id).order('created_at'));
+  let urls = {};
+  if (photos.length) {
+    const signed = await sb.storage.from('form-photos').createSignedUrls(photos.map((p) => p.storage_path), 3600);
+    urls = Object.fromEntries((signed.data || []).map((x) => [x.path, x.signedUrl]));
+  }
+  return {
+    round: shapeRound(s),
+    photos: photos.map((p) => ({ id: p.id, itemKey: p.item_key, name: p.original_name, url: urls[p.storage_path] || null, at: p.created_at })),
+  };
+});
+
+route('PUT', '/rounds/:id', async ({ params, body }) => {
+  const patch = {
+    header: body.header || {},
+    answers: body.answers || {},
+    findings: Math.max(0, Number(body.findings) || 0),
+    round_date: body.header && /^\d{4}-\d{2}-\d{2}$/.test(body.header.date || '') ? body.header.date : null,
+    location_id: body.locationId ? Number(body.locationId) : null,
+  };
+  const row = ok(await sb.from('form_submissions').update(patch).eq('id', params.id).eq('status', 'draft').select('updated_at').maybeSingle());
+  if (!row) throw new ApiError('This round is submitted. Reopen it to make changes.', 409);
+  return { updatedAt: row.updated_at };
+});
+
+route('POST', '/rounds/:id/status', async ({ params, body }) => {
+  const status = body.status === 'submitted' ? 'submitted' : 'draft';
+  ok(await sb.from('form_submissions').update({ status, submitted_at: status === 'submitted' ? new Date().toISOString() : null })
+    .eq('id', params.id).select('id').single());
+  return { ok: true };
+});
+
+route('DELETE', '/rounds/:id', async ({ params }) => {
+  const photos = ok(await sb.from('form_photos').select('storage_path').eq('submission_id', params.id));
+  if (photos.length) await sb.storage.from('form-photos').remove(photos.map((p) => p.storage_path));
+  ok(await sb.from('form_submissions').delete().eq('id', params.id));
+  return { ok: true };
+});
+
+route('POST', '/rounds/:id/photos', async ({ params, form }) => {
+  const file = await shrinkImage(form && form.get('file'));
+  const kind = await sniff(file, IMAGE_TYPES, 10 * 1024 * 1024);
+  const path = `${Number(params.id)}/${randomName(kind.ext)}`;
+  ok(await sb.storage.from('form-photos').upload(path, file, { contentType: kind.mime, upsert: false }));
+  try {
+    const row = ok(await sb.from('form_photos').insert({
+      submission_id: Number(params.id), item_key: String(form.get('itemKey') || '').slice(0, 80) || null,
+      storage_path: path, original_name: String(file.name || 'photo').slice(0, 255), mime_type: kind.mime, size_bytes: file.size,
+    }).select('id').single());
+    return { id: row.id };
+  } catch (e) {
+    await sb.storage.from('form-photos').remove([path]);
+    throw e;
+  }
+});
+
+route('DELETE', '/rounds/:id/photos/:photoId', async ({ params }) => {
+  const p = ok(await sb.from('form_photos').select('storage_path').eq('id', params.photoId).single());
+  ok(await sb.from('form_photos').delete().eq('id', params.photoId));
+  await sb.storage.from('form-photos').remove([p.storage_path]);
+  return { ok: true };
+});
+
+/* ---------- Compliance tracker (owner-only; RLS enforces) ---------- */
+
+route('GET', '/compliance', async () => {
+  const [tasks, entries] = await Promise.all([
+    sb.from('compliance_tasks').select('*').order('sort_order').order('name'),
+    sb.from('compliance_entries').select('id, task_id, done_on, note, created_at').order('done_on').limit(10000),
+  ]);
+  return { tasks: ok(tasks), entries: ok(entries) };
+});
+
+route('POST', '/compliance/entries', async ({ body }) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(body.doneOn || '')) throw new ApiError('Choose a valid date.', 400);
+  const note = String(body.note || '').trim().slice(0, 500) || null;
+  return ok(await sb.from('compliance_entries').insert({ task_id: Number(body.taskId), done_on: body.doneOn, note }).select('*').single());
+});
+
+route('DELETE', '/compliance/entries/:id', async ({ params }) => {
+  ok(await sb.from('compliance_entries').delete().eq('id', params.id));
+  return { ok: true };
+});
+
+const taskRow = (b) => {
+  const name = String(b.name || '').trim();
+  if (!name) throw new ApiError('Task name is required.', 400);
+  return {
+    name: name.slice(0, 200),
+    cadence: b.cadence,
+    counts_toward_compliance: b.cadence !== 'misc' && Boolean(b.countsTowardCompliance),
+    due_month: b.cadence === 'annual' && Number(b.dueMonth) ? Number(b.dueMonth) : null,
+    interval_label: String(b.intervalLabel || '').trim().slice(0, 60) || null,
+    next_due: /^\d{4}-\d{2}-\d{2}$/.test(b.nextDue || '') ? b.nextDue : null,
+    notes: String(b.notes || '').trim().slice(0, 1000) || null,
+    sort_order: Number(b.sortOrder) || 0,
+    is_active: b.isActive === undefined ? true : Boolean(b.isActive),
+  };
+};
+route('POST', '/compliance/tasks', async ({ body }) => ok(await sb.from('compliance_tasks').insert(taskRow(body)).select('*').single()));
+route('PUT', '/compliance/tasks/:id', async ({ params, body }) =>
+  ok(await sb.from('compliance_tasks').update(taskRow(body)).eq('id', params.id).select('*').single()));
+
+route('POST', '/compliance/export', async ({ body }) => {
+  await sb.rpc('log_client_event', { p_action: 'compliance.export', p_details: { year: body.year } });
+  return csvFile(`eoc-compliance-${body.year}.csv`, toCsv(body.columns, body.rows));
 });
 
 /* ---------- Error logs ---------- */

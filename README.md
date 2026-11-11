@@ -23,7 +23,8 @@ The browser holds only the **publishable** key, which identifies the project and
 - **Who can register:** exact `@archvistabh.com` addresses only, with no subdomains. A database trigger rejects every other address before the account is created.
 - **Developer account:** one address, stored privately in the database (`app_settings.developer_email`, never exposed through the API), is the single exception. It becomes superuser automatically once its email is confirmed, and it can't be disabled or demoted.
 - **New staff accounts:** each person confirms their email, then stays **pending** until an administrator approves them under *Users*. Pending and disabled users can't read any data.
-- **Roles:** assigned per user. Permissions are edited per role under *Roles & Permissions*. A non-superuser can never grant a permission they don't hold.
+- **Owner-only administration:** settings (facility info, locations, categories, priorities, registration), roles & permissions, user administration (approve, disable, assign roles), error logs, the audit log, and deleting work orders are reserved for the developer account. These permissions are flagged `superuser_only` in `public.permissions`. The database ignores them on any role and refuses to attach them to one. Superuser status can't be granted to any other account.
+- **Roles:** assigned per user by the owner. They control day-to-day access only: submitting, viewing, assigning, working and closing work orders, reports, and the staff directory.
 - **Default roles:** Administrator · Maintenance Supervisor · Maintenance Technician · Staff Requester (default for new accounts) · Leadership / Viewer.
 
 ## Behavioral-health controls
@@ -32,6 +33,13 @@ The browser holds only the **publishable** key, which identifies the project and
 - **Tool control:** a job in a patient-care area, or any ligature job, can't be completed until the technician attests that all tools and debris were removed. Their name and the time are recorded.
 - **Area flags:** out-of-service and escort-required flags, with a return-to-service step at completion.
 - **PHI warnings:** shown on every free-text field. Work orders are facility records and must not contain patient identifiers.
+
+## Rounds & Compliance (owner-only)
+
+- **Single technician:** every new work order is assigned to the owner account automatically (database trigger `work_orders_auto_assign`). Everyone else is a requester.
+- **Rounds & Inspections:** fillable forms built from a template definition (`form_templates.definition`). Each item can be Yes / No / N/A (with sub-items), a 1–5 rating, a choice, or free text, plus per-item notes and photos (private `form-photos` bucket). Drafts autosave. Each item records which answer counts as a finding, so findings are tallied and can become a prefilled work order in one tap.
+- **Compliance Tracker:** recurring EOC tasks (monthly, quarterly, semi-annual, annual, misc multi-year) with dated completions. `site/js/compliance-calc.js` reproduces the facility's EOC Dashboard workbook formulas exactly, including the weighted YTD compliance. Keep it unchanged.
+- **Facility content stays out of this repo.** Form questions, tracker tasks and logged dates live only in the database. Source documents and seed SQL go in the git-ignored `assets/` folder.
 
 ## Error logging & reporting
 
