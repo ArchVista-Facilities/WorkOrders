@@ -21,7 +21,7 @@ The browser holds only the **publishable** key, which identifies the project and
 ## Account policy
 
 - **Who can register:** exact `@archvistabh.com` addresses only, with no subdomains. A database trigger rejects every other address before the account is created.
-- **Developer account:** `paulmmoore3416@gmail.com` is the single exception. It becomes superuser automatically once its email is confirmed, and it can't be disabled or demoted.
+- **Developer account:** one address, stored privately in the database (`app_settings.developer_email`, never exposed through the API), is the single exception. It becomes superuser automatically once its email is confirmed, and it can't be disabled or demoted.
 - **New staff accounts:** each person confirms their email, then stays **pending** until an administrator approves them under *Users*. Pending and disabled users can't read any data.
 - **Roles:** assigned per user. Permissions are edited per role under *Roles & Permissions*. A non-superuser can never grant a permission they don't hold.
 - **Default roles:** Administrator · Maintenance Supervisor · Maintenance Technician · Staff Requester (default for new accounts) · Leadership / Viewer.

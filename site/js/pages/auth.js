@@ -115,9 +115,8 @@ export default {
           e.preventDefault();
           const v = formValues(e.target);
           const email = v.email.toLowerCase();
-          const domain = email.split('@')[1] || '';
-          // The database enforces this too; the developer address is the single exception.
-          if (!cfg.allowedDomains.includes(domain) && email !== 'paulmmoore3416@gmail.com') return toast(`Use your ${domains} email address.`, 'error');
+          // Domain eligibility (including the private developer exception) is enforced by the
+          // database trigger; a rejected address comes back as a friendly message via authMessage().
           if (!v.firstName || !v.lastName) return toast('First and last name are required.', 'error');
           if (v.password !== v.password2) return toast('Passwords do not match.', 'error');
           try {

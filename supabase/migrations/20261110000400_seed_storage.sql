@@ -6,7 +6,9 @@
 insert into public.app_settings (key, value) values
   ('facility', '{"name":"Arch Vista Behavioral Health","street":"5500 South Broadway Street","city":"St. Louis","state":"MO","zip":"63111"}'),
   ('allowed_domains', '["archvistabh.com"]'),
-  ('developer_email', '"paulmmoore3416@gmail.com"'),
+  -- Placeholder: on a fresh project, set the real developer address afterwards with
+  --   update public.app_settings set value = to_jsonb('<address>'::text) where key = 'developer_email';
+  ('developer_email', '"developer@example.invalid"'),
   ('auto_approve_domain_users', 'false'),
   ('wo_prefix', '"WO"')
 on conflict (key) do nothing;
