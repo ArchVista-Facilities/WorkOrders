@@ -79,10 +79,7 @@ export default {
               : ''}
             ${me.isSuperuser && !isSelf && u.status === 'active'
               ? html`<div class="card"><div class="card-head"><h2>Superuser</h2></div><div class="card-body">
-                  <p class="small muted">Superusers bypass every permission check, including role management. Grant sparingly.</p>
-                  ${u.isDeveloper
-                    ? html`<p class="small">The developer account is always a superuser.</p>`
-                    : html`<button class="btn ${u.isSuperuser ? 'btn-danger' : ''}" id="su-toggle">${u.isSuperuser ? 'Revoke superuser' : 'Make superuser'}</button>`}
+                  <p class="small muted">Settings, roles, user administration, error logs, the audit log and deleting work orders are reserved for the owner account. Superuser access can't be granted to anyone else.</p>
                 </div></div>`
               : ''}
             <div class="card"><div class="card-head"><h2>Effective permissions</h2></div><div class="card-body small">
@@ -153,20 +150,6 @@ export default {
         });
       }
 
-      const su = $('#su-toggle', el);
-      if (su) {
-        su.addEventListener('click', async () => {
-          const grant = !u.isSuperuser;
-          if (!(await confirmDialog(grant ? `Make ${u.displayName} a superuser with unrestricted access?` : `Revoke superuser from ${u.displayName}?`, { danger: grant, okLabel: grant ? 'Grant superuser' : 'Revoke' }))) return;
-          try {
-            await api(`/users/${u.id}/superuser`, { method: 'POST', body: { isSuperuser: grant } });
-            toast('Updated.', 'success');
-            draw();
-          } catch (err) {
-            toastError(err);
-          }
-        });
-      }
     };
 
     await draw();

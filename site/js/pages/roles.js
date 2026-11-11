@@ -37,8 +37,11 @@ export default {
               ${Object.entries(catalogue).map(
                 ([mod, perms]) => html`<div class="perm-group"><h4>${MODULE_LABEL[mod] || titleCase(mod)}</h4>
                   ${perms.map(
-                    (p) => html`<label class="check"><input type="checkbox" name="perm" value="${p.key}" ${checked(has.has(p.key))} />
-                      <span><strong>${p.label}</strong><span class="help">${p.description || ''} <code>${p.key}</code></span></span></label>`
+                    (p) => p.superuser_only
+                      ? html`<label class="check"><input type="checkbox" disabled />
+                          <span><strong>${p.label}</strong> <span class="badge flag-info">${icon('shield', 'icon-sm')}Owner only</span><span class="help">${p.description || ''} <code>${p.key}</code>. Reserved for the owner account; can't be given to a role.</span></span></label>`
+                      : html`<label class="check"><input type="checkbox" name="perm" value="${p.key}" ${checked(has.has(p.key))} />
+                          <span><strong>${p.label}</strong><span class="help">${p.description || ''} <code>${p.key}</code></span></span></label>`
                   )}</div>`
               )}
             </div>
